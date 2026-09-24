@@ -1,0 +1,23 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "lobby": {
+      "peers": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "!newData.exists() || (newData.hasChildren(['t']) && newData.child('t').isNumber())"
+        }
+      },
+      "ev": {
+        "$topic": {
+          ".read": "auth != null && ($topic === 'snap' || $topic === 'start')",
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && ($topic === 'snap' || $topic === 'start')"
+          }
+        }
+      }
+    }
+  }
+}
