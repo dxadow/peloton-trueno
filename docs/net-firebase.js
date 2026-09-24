@@ -79,6 +79,11 @@
       for (const f of connHandlers) { try { f(connected); } catch (e) { } }
     });
     setInterval(() => { if (connected) writeMine(); rebuild(null); }, HEARTBEAT_MS);
+    // Al volver de segundo plano (p. ej. tras mandar el código por WhatsApp) se re-anuncia la partida al instante
+    const wake = () => { if (connected) writeMine(); rebuild(null); };
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) wake(); });
+    window.addEventListener('focus', wake); window.addEventListener('online', wake);
+    document.addEventListener('resume', wake);
 
     const peersRef = base.child('peers');
     peersRef.on('child_added', s => { raw.set(s.key, s.val() || {}); rebuild(s.key); });
