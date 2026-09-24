@@ -1,5 +1,5 @@
 // Pelotón Trueno — service worker: permite jugar sin conexión (el co-op online sí necesita internet)
-const CACHE='pt-v1790220482';
+const CACHE='pt-v1790283479';
 const FILES=['./','index.html','net-firebase.js','firebase-config.js','manifest.webmanifest','icon-192.png','icon-512.png',
   'vendor/firebase-app-compat.js','vendor/firebase-auth-compat.js','vendor/firebase-database-compat.js'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
