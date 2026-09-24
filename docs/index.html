@@ -249,7 +249,14 @@ function throwBomb(p){p.bombs--;SFX.toss();grenades.push({x:p.x+8+p.face*6,y:p.y
 const keys={};const inp={left:false,right:false,up:false,jump:false,fire:false,bomb:false};
 let jumpEdge=false,bombEdge=false,prevJump=false,prevBomb=false,touchMode=('ontouchstart' in window)||navigator.maxTouchPoints>0;
 const KMAP={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',KeyZ:'jump',Space:'jump',KeyX:'fire',KeyJ:'fire',KeyC:'bomb',KeyK:'bomb'};
-addEventListener('keydown',e=>{audioInit();if(KMAP[e.code]){keys[KMAP[e.code]]=true;e.preventDefault()}
+addEventListener('keydown',e=>{audioInit();
+  if(state==='code'){const k=(e.key||'').toUpperCase();
+    if(k.length===1&&CODE_CH.includes(k)){act('k:'+k);e.preventDefault();return}
+    if(e.key==='Backspace'){act('del');e.preventDefault();return}
+    if(e.key==='Enter'){act('joincode');e.preventDefault();return}
+    if(e.key==='Escape'){act('back');return}
+    return}
+  if(KMAP[e.code]){keys[KMAP[e.code]]=true;e.preventDefault()}
   if(e.code==='KeyP'||e.code==='Escape'){if(state==='play')act(menuOpen?'cont':'pause');else if(state==='pause')act('cont')}
   if(e.code==='KeyM')setMusic(!musicOn);
   if(e.code==='Enter'){if(state==='title')act('solo');else if(state==='over'||state==='win')act('endtap');else if(state==='netlost')act('title')}
@@ -304,22 +311,28 @@ function code(peer){return String(peer||'').replace(/[^a-z0-9]/gi,'').slice(-4).
 function roomPeers(){try{return room?room.peers():[]}catch(e){return[]}}
 function screenButtons(){
   if(state==='title'){return[
-    mkBtn('solo','UN JUGADOR',184,{primary:true}),
-    mkBtn('coop','CO-OP ONLINE · 2 TELÉFONOS',226,{disabled:!room}),
+    mkBtn('solo','UN JUGADOR',174,{primary:true,h:32}),
+    mkBtn('host','CREAR PARTIDA ONLINE',212,{disabled:!room,h:32}),
+    mkBtn('joinmenu','UNIRSE CON CÓDIGO',250,{disabled:!room,h:32}),
     {id:'mus',label:musicOn?'♪ MÚSICA SÍ':'♪ MÚSICA NO',x:W-124,y:10,w:114,h:28,small:true}
   ]}
   if(state==='lobby'){
     const out=[];const peers=roomPeers();
-    if(lobbyRole===null){
-      const hosts=peers.filter(p=>!p.sameTab&&p.presence&&p.presence.st==='hosting').slice(0,3);
-      hosts.forEach((h,i)=>out.push(mkBtn('join:'+h.peer,'UNIRSE A PARTIDA '+code(h.peer),128+i*44,{primary:true})));
-      out.push(mkBtn('host','CREAR PARTIDA',128+hosts.length*44,{primary:!hosts.length}));
-      out.push(mkBtn('back','VOLVER',H-54,{w:160}));
+    if(lobbyRole==='pending'||lobbyRole==='error'){
+      out.push(mkBtn('cancel','VOLVER',H-54,{w:160}));
     }else if(lobbyRole==='host'){
       const g=peers.find(p=>!p.sameTab&&p.presence&&p.presence.st==='joining'&&p.presence.host===myPeer);
       if(g)out.push(mkBtn('go:'+g.peer,'COMENZAR MISIÓN',196,{primary:true}));
       out.push(mkBtn('cancel','CANCELAR',H-54,{w:160}));
     }else{out.push(mkBtn('cancel','CANCELAR',H-54,{w:160}))}
+    return out;
+  }
+  if(state==='code'){
+    const out=[],cols=8,kw=40,kh=30,gap=6,x0=W/2-(cols*kw+(cols-1)*gap)/2,y0=128;
+    [...CODE_CH].forEach((c,i)=>out.push({id:'k:'+c,label:c,x:x0+(i%cols)*(kw+gap),y:y0+Math.floor(i/cols)*(kh+gap),w:kw,h:kh,small:true,fs:15,disabled:codeBuf.length>=4}));
+    out.push({id:'back',label:'VOLVER',x:W/2-186,y:290,w:110,h:34});
+    out.push({id:'del',label:'⌫ BORRAR',x:W/2-60,y:290,w:110,h:34,disabled:!codeBuf.length});
+    out.push({id:'joincode',label:'UNIRSE',x:W/2+66,y:290,w:120,h:34,primary:true,disabled:codeBuf.length<4});
     return out;
   }
   if(state==='pause'||(state==='play'&&menuOpen)){
@@ -331,25 +344,37 @@ function screenButtons(){
 }
 function act(id){
   if(id==='solo'){netMode=null;tryFullscreen();startMission(false);return}
-  if(id==='coop'){if(!room)return;tryFullscreen();state='lobby';lobbyRole=null;lobbyMsg='';return}
+  if(id==='joinmenu'){if(!room)return;tryFullscreen();state='code';codeBuf='';lobbyMsg='';return}
+  if(id.startsWith('k:')){if(codeBuf.length<4)codeBuf+=id.slice(2);lobbyMsg='';return}
+  if(id==='del'){codeBuf=codeBuf.slice(0,-1);lobbyMsg='';return}
+  if(id==='joincode'){joinByCode();return}
   if(id==='mus'){audioInit();setMusic(!musicOn);return}
   if(id==='snd'){muted=!muted;store.set('pt_sfx',muted?'0':'1');return}
   if(id==='cont'){if(state==='pause')state='play';menuOpen=false;return}
   if(id==='pause'){if(netMode)menuOpen=true;else state='pause';return}
   if(id==='rst'){startMission(false);return}
   if(id==='exit'||id==='title'){netLeave();return}
-  if(id==='back'){lobbyRole=null;pres({st:'menu',host:null});state='title';return}
-  if(id==='cancel'){lobbyRole=null;joinHost=null;pres({st:'menu',host:null});return}
-  if(id==='host'){lobbyMsg='';
-    room.emit('start',{g:null}).then(()=>{lobbyRole='host';pres({st:'hosting',host:null})})
-      .catch(err=>{lobbyMsg=err&&err.code==='not_permitted'?'Para crear partidas necesitas permiso de edición. Puedes unirte a la partida de otro jugador.':'No se pudo crear la partida. Intenta de nuevo.'});return}
-  if(id.startsWith('join:')){joinHost=id.slice(5);lobbyRole='join';lobbyMsg='';pres({st:'joining',host:joinHost});return}
+  if(id==='back'){lobbyRole=null;joinHost=null;pres({st:'menu',host:null,code:null});state='title';return}
+  if(id==='cancel'){const wasJoin=lobbyRole==='join';lobbyRole=null;joinHost=null;pres({st:'menu',host:null,code:null});state=wasJoin?'code':'title';return}
+  if(id==='host'){if(!room)return;tryFullscreen();lobbyMsg='';state='lobby';lobbyRole='pending';
+    const taken=new Set(roomPeers().map(p=>p.presence&&p.presence.code));
+    do{myCode=Array.from({length:4},()=>CODE_CH[Math.floor(Math.random()*CODE_CH.length)]).join('')}while(taken.has(myCode));
+    room.emit('start',{g:null}).then(()=>{if(lobbyRole!=='pending')return;lobbyRole='host';pres({st:'hosting',host:null,code:myCode})})
+      .catch(err=>{lobbyRole='error';lobbyMsg=err&&err.code==='not_permitted'?'Para crear partidas necesitas permiso de edición. Puedes unirte a la partida de otro jugador con su código.':'No se pudo crear la partida. Revisa tu conexión e intenta de nuevo.'});return}
   if(id.startsWith('go:')){partnerPeer=id.slice(3);netMode='host';lobbyRole=null;startAt=performance.now();lastStartEmit=0;gBits=0;
-    pres({st:'playing',host:null});startMission(false);return}
+    pres({st:'playing',host:null,code:null});startMission(false);return}
   if(id==='endtap'){if(netMode==='guest')return;if(state==='over')startMission(true);else if(state==='win'){if(netMode==='host'&&partnerPeer)startMission(false);else{netLeave()}}return}
 }
 
 /* ---------- red: co-op online (anfitrión autoritativo) ---------- */
+const CODE_CH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+let codeBuf='',myCode='',joinCode='';
+function joinByCode(){
+  if(codeBuf.length<4)return;
+  const h=roomPeers().find(p=>!p.sameTab&&p.presence&&p.presence.st==='hosting'&&p.presence.code===codeBuf);
+  if(!h){lobbyMsg='No encontramos la partida '+codeBuf+'. Revisa el código y que tu compañero siga en la pantalla de su partida.';return}
+  joinHost=h.peer;joinCode=codeBuf;lobbyRole='join';lobbyMsg='';state='lobby';pres({st:'joining',host:joinHost,code:null});
+}
 function pres(o){if(room)room.presence(o).catch(()=>{})}
 let unSnap=null;
 function dropSnap(){if(unSnap){try{unSnap()}catch(e){}unSnap=null}}
@@ -363,7 +388,7 @@ function onPeersChange(ch){
     if(!g||st==='menu'||st==='hosting'||(st!=='playing'&&performance.now()-startAt>12000))partnerLost()}
   if(netMode==='guest'){const h=find(hostPeer),st=h&&h.presence&&h.presence.st;if(!h||st==='menu'||st==='hosting')hostLost()}
   if(lobbyRole==='join'){const h=find(joinHost),st=h&&h.presence&&h.presence.st;
-    if(!h||(st!=='hosting'&&st!=='playing')){lobbyRole=null;joinHost=null;lobbyMsg='El anfitrión cerró la partida.';pres({st:'menu',host:null})}}
+    if(!h||(st!=='hosting'&&st!=='playing')){lobbyRole=null;joinHost=null;lobbyMsg='El anfitrión cerró la partida.';if(state==='lobby')state='code';pres({st:'menu',host:null})}}
 }
 function onStart(msg){
   const d=msg&&msg.data;if(!d||typeof d!=='object'||msg.sameTab)return;
@@ -371,7 +396,7 @@ function onStart(msg){
   if(d.g===myPeer){netMode='guest';hostPeer=msg.peer;if(typeof room.onFrom==='function'){if(unSnap)unSnap();unSnap=room.onFrom('snap',hostPeer,onSnap)}lobbyRole=null;joinHost=null;lastSnapQ=-1;lastSnapAt=performance.now();
     PL=[];enemies=[];bullets=[];ebullets=[];grenades=[];parts=[];pickups=[];crates=[];floats=[];boss=null;bossActive=false;
     gJ=0;gB=0;sentBits=-1;state='play';menuOpen=false;pres({st:'playing',host:hostPeer,in:0,j:0,b:0})}
-  else{lobbyRole=null;joinHost=null;lobbyMsg='Esa partida comenzó con otro jugador.';pres({st:'menu',host:null})}
+  else{lobbyRole=null;joinHost=null;lobbyMsg='Esa partida comenzó con otro jugador.';if(state==='lobby')state='code';pres({st:'menu',host:null})}
 }
 (async()=>{
   try{if(window.claude&&typeof window.claude.use==='function')room=await window.claude.use('room')}catch(e){room=null}
@@ -810,7 +835,7 @@ function drawButtons(bs){
     ctx.globalAlpha=b.disabled?.45:1;
     ctx.fillStyle=b.primary?C.gold:b.small?'rgba(27,31,34,.55)':'rgba(255,255,255,.14)';rr(b.x,b.y,b.w,b.h,8);ctx.fill();
     if(!b.primary){ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;ctx.stroke()}
-    txt(b.label,b.x+b.w/2,b.y+b.h/2+(b.small?4:5),'700 '+(b.small?10:13)+'px '+FU,b.primary?C.ink:'#fff','center',false);
+    const fs=b.fs||(b.small?10:13);txt(b.label,b.x+b.w/2,b.y+b.h/2+fs*.38,(b.fs?'':'700 ')+fs+'px '+(b.fs?FD:FU),b.primary?C.ink:'#fff','center',false);
     ctx.globalAlpha=1;
   }
 }
@@ -828,31 +853,43 @@ function drawTitle(t){
   txt('PELOTÓN',0,-10,'42px '+FD,C.gold,'center');
   txt('TRUENO',0,40,'56px '+FD,'#fff','center');
   ctx.restore();
-  txt('PROTOTIPO · MISIÓN 1: CAÑÓN SECO',W/2,166,'700 12px '+FU,'#fff6dc','center');
+  txt('PROTOTIPO · MISIÓN 1: CAÑÓN SECO',W/2,160,'700 12px '+FU,'#fff6dc','center');
   drawButtons(screenButtons());
-  txt(room?'Co-op: abre el juego en el otro teléfono y únete a tu partida':'Co-op online no disponible: revisa la conexión a internet',W/2,280,'500 10px '+FU,'#fff','center');
-  txt(touchMode?'Gira el teléfono en horizontal · controles en pantalla':'Flechas: mover · ↑ apuntar · Z salto · X fuego · C granada · P pausa · M música',W/2,296,'500 10px '+FU,'#fff','center');
-  if(best)txt('RÉCORD '+String(best).padStart(7,'0'),W/2,H-16,'700 11px '+FU,'#fff','center');
+  txt(room?'Co-op: uno crea la partida y el otro se une con el código de 4 letras':'Co-op online no disponible: revisa la conexión a internet',W/2,300,'500 10px '+FU,'#fff','center');
+  txt(touchMode?'Gira el teléfono en horizontal · controles en pantalla':'Flechas: mover · ↑ apuntar · Z salto · X fuego · C granada · P pausa · M música',W/2,315,'500 10px '+FU,'#fff','center');
+  if(best)txt('RÉCORD '+String(best).padStart(7,'0'),W/2,H-12,'700 11px '+FU,'#fff','center');
 }
 function drawLobby(t){
   drawRunner(t);overlay(.62);
   txt('CO-OP ONLINE',W/2,52,'28px '+FD,C.gold,'center');
   const n=roomPeers().length;
   txt(n>1?(n-1)+(n-1===1?' jugador más con el juego abierto':' jugadores más con el juego abierto'):'Nadie más tiene el juego abierto todavía',W/2,76,'500 11px '+FU,'#e8e2d4','center');
-  if(lobbyRole===null){
-    const hosts=roomPeers().filter(p=>!p.sameTab&&p.presence&&p.presence.st==='hosting');
-    txt(hosts.length?'Elige una partida o crea la tuya':'Crea una partida y pídele a tu compañero que se una',W/2,108,'700 12px '+FU,'#fff','center');
+  if(lobbyRole==='pending'){
+    txt('Creando partida'+'.'.repeat(1+Math.floor(t*2)%3),W/2,140,'700 13px '+FU,'#fff','center');
+  }else if(lobbyRole==='error'){
+    txt('NO SE PUDO CREAR LA PARTIDA',W/2,130,'700 13px '+FU,'#ffb4a0','center');
   }else if(lobbyRole==='host'){
-    txt('TU PARTIDA',W/2,112,'700 11px '+FU,'#e8e2d4','center');
-    txt(code(myPeer),W/2,146,'32px '+FD,'#fff','center');
+    txt('CÓDIGO DE TU PARTIDA · DÍSELO A TU COMPAÑERO',W/2,110,'700 11px '+FU,'#e8e2d4','center');
+    txt(myCode,W/2,150,'40px '+FD,'#fff','center');
     const g=roomPeers().find(p=>!p.sameTab&&p.presence&&p.presence.st==='joining'&&p.presence.host===myPeer);
     txt(g?'¡Compañero conectado! Listo para desplegar.':'Esperando compañero'+'.'.repeat(1+Math.floor(t*2)%3),W/2,178,'700 12px '+FU,g?'#9ef08a':'#fff','center');
   }else{
     txt('UNIDO A LA PARTIDA',W/2,112,'700 11px '+FU,'#e8e2d4','center');
-    txt(code(joinHost),W/2,146,'32px '+FD,PCOL[1].tag,'center');
+    txt(joinCode,W/2,150,'40px '+FD,PCOL[1].tag,'center');
     txt('Esperando que el anfitrión comience'+'.'.repeat(1+Math.floor(t*2)%3),W/2,178,'700 12px '+FU,'#fff','center');
   }
   if(lobbyMsg)wrapText(lobbyMsg,W/2,H-76,W-80,14,'700 11px '+FU,'#ffb4a0');
+  drawButtons(screenButtons());
+}
+function drawCode(t){
+  drawRunner(t);overlay(.66);
+  txt('UNIRSE CON CÓDIGO',W/2,40,'24px '+FD,C.gold,'center');
+  for(let i=0;i<4;i++){const bx=W/2-94+i*48,by=56;ctx.fillStyle='rgba(255,255,255,.1)';rr(bx,by,40,44,7);ctx.fill();
+    ctx.strokeStyle=i===codeBuf.length?C.gold:'rgba(255,255,255,.4)';ctx.lineWidth=i===codeBuf.length?2.5:1.5;ctx.stroke();
+    if(codeBuf[i])txt(codeBuf[i],bx+20,by+32,'26px '+FD,'#fff','center',false);
+    else if(i===codeBuf.length&&Math.floor(t*2)%2===0){ctx.fillStyle=C.gold;ctx.fillRect(bx+14,by+34,12,3)}}
+  if(lobbyMsg)wrapText(lobbyMsg,W/2,110,W-60,11,'700 10px '+FU,'#ffb4a0');
+  else txt('Escribe el código que aparece en la pantalla de tu compañero',W/2,118,'500 10px '+FU,'#e8e2d4','center');
   drawButtons(screenButtons());
 }
 function drawPause(){overlay(.6);txt(netMode?'MENÚ':'PAUSA',W/2,88,'30px '+FD,C.gold,'center');if(netMode)txt('La partida sigue corriendo',W/2,104,'500 10px '+FU,'#e8e2d4','center');drawButtons(screenButtons())}
@@ -892,7 +929,7 @@ function frame(now){
   else if(netMode==='host'){hostNet(now);updFx(dt)}
   // música según la escena
   let want=null;
-  if(state==='title'||state==='lobby'||state==='netlost')want='title';
+  if(state==='title'||state==='lobby'||state==='code'||state==='netlost')want='title';
   else if(state==='play'||state==='pause')want=(bossActive&&boss&&!boss.dead)?'boss':'level';
   musicSet(want);musicTick();
   if(state!==prevState){if(state==='win')jingle(true);if(state==='over')jingle(false);prevState=state}
@@ -902,6 +939,7 @@ function frame(now){
   if(portrait)drawPortrait();
   else if(state==='title')drawTitle(tt);
   else if(state==='lobby')drawLobby(tt);
+  else if(state==='code')drawCode(tt);
   else if(state==='netlost')drawNetLost(tt);
   else{
     const sx=shakeT>0?rand(-shakeM,shakeM):0,sy=shakeT>0?rand(-shakeM,shakeM):0;
