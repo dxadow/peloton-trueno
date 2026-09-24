@@ -23,6 +23,9 @@
       auth.useEmulator(cfg.emulator.auth);
       db.useEmulator(cfg.emulator.dbHost, cfg.emulator.dbPort);
     }
+    // Cada pestaña/apertura del juego es un jugador distinto (si no, dos pestañas del mismo
+    // navegador compartirían el mismo usuario anónimo y no se verían entre sí).
+    try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch (e) { }
     const cred = await auth.signInAnonymously();
     const uid = cred.user.uid;
 
